@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Automated colony formation assay area quantification with visual QC."
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+  { name = "itismeangie", email = "149933973+itismeangie@users.noreply.github.com" },
+]
 dependencies = [
   "numpy>=1.24",
   "Pillow>=10.0",

@@ -6,6 +6,10 @@ The pipeline detects the lower stained plate area, straightens the image from pl
 
 For a step-by-step walkthrough, see [TUTORIAL.md](TUTORIAL.md).
 
+## Author
+
+- [itismeangie](https://github.com/itismeangie)
+
 ## What the Pipeline Produces
 
 For each run, the output directory contains:
