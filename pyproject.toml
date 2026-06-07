@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cfa-colony-area"
+version = "0.1.0"
+description = "Automated colony formation assay area quantification with visual QC."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "Pillow>=10.0",
+  "scipy>=1.10",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+[project.scripts]
+cfa-colony-area = "batch_cfa_colony_area:main"
+
+[tool.setuptools]
+py-modules = [
+  "analyze_cfa_plate_one",
+  "batch_cfa_colony_area",
+  "calculate_colony_area",
+]

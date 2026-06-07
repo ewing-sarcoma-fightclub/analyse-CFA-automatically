@@ -1,0 +1,43 @@
+# Python/local development
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Colony-area run outputs
+_colonyarea_results/
+_colonyarea_test/
+per_image/
+sample_mask_qc/
+internal_control_qc.html
+colony_area_*_results.csv
+colony_area_*_summary.csv
+qc_flags.csv
+failed_images.csv
+duplicate_images.csv
+*_auto_*
+*_deskewed_preview.png
+results_*_auto_colony_area.txt
+
+# Raw images and local analysis artifacts
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+*.pdf
+*.xlsx
+*.zip
+
+# Keep small tutorial figures.
+!docs/
+!docs/assets/
+!docs/assets/*.png
