@@ -201,6 +201,42 @@ class BatchHelperTests(unittest.TestCase):
         self.assertGreater(int((mask & colonies).sum()), int(colonies.sum() * 0.90))
         self.assertLess(int((mask & wash & ~colonies).sum()), int((wash & ~colonies).sum() * 0.10))
 
+    def test_colony_mask_rejects_smooth_empty_well_stain(self) -> None:
+        rgb = np.full((200, 200, 3), 220, dtype=np.uint8)
+        yy, xx = np.ogrid[:200, :200]
+        well = ((xx - 99.5) / 98.0) ** 2 + ((yy - 99.5) / 98.0) ** 2 <= 1.0
+        smooth_stain = well & (yy > 88)
+        rgb[smooth_stain] = np.array([130, 120, 162], dtype=np.uint8)
+
+        mask, roi = colony_mask(rgb)
+
+        self.assertLess(float(mask.sum()) / float(roi.sum()), 0.01)
+
+    def test_colony_mask_rejects_empty_edge_crescent(self) -> None:
+        rgb = np.full((200, 200, 3), 220, dtype=np.uint8)
+        yy, xx = np.ogrid[:200, :200]
+        distance = np.sqrt((xx - 99.5) ** 2 + (yy - 99.5) ** 2)
+        crescent = (distance > 58) & (distance < 97) & (xx > 112)
+        rgb[crescent] = np.array([118, 105, 165], dtype=np.uint8)
+
+        mask, roi = colony_mask(rgb)
+
+        self.assertLess(float(mask.sum()) / float(roi.sum()), 0.03)
+
+    def test_colony_mask_keeps_pale_textured_colony_field(self) -> None:
+        rgb = np.full((200, 200, 3), 220, dtype=np.uint8)
+        yy, xx = np.ogrid[:200, :200]
+        colonies = np.zeros((200, 200), dtype=bool)
+        for cy in [58, 82, 106, 130, 154]:
+            for cx in [52, 78, 104, 130, 156]:
+                if (cx + cy) % 3:
+                    colonies |= (xx - cx) ** 2 + (yy - cy) ** 2 <= 8**2
+        rgb[colonies] = np.array([115, 102, 168], dtype=np.uint8)
+
+        mask, _ = colony_mask(rgb)
+
+        self.assertGreater(int((mask & colonies).sum()), int(colonies.sum() * 0.65))
+
 
 if __name__ == "__main__":
     unittest.main()

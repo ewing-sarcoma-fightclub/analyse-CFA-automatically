@@ -392,7 +392,103 @@ def colony_mask(rgb: np.ndarray, ellipse_scale: float = COLONY_ROI_SCALE) -> tup
     mask = ndimage.binary_closing(mask, structure=np.ones((2, 2)))
     cleaned = filter_components(mask, min_area=3, max_area=mask.size, remove_skinny=False)
     cleaned = remove_outer_rim_fragments(cleaned, well_roi)
+    cleaned = remove_smooth_empty_well_artifacts(cleaned, well_roi, rgb)
     return cleaned, well_roi
+
+
+def colony_texture_features(
+    rgb: np.ndarray, roi: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    channels = rgb.astype(np.int16)
+    red = channels[:, :, 0]
+    green = channels[:, :, 1]
+    blue = channels[:, :, 2]
+    maxc = channels.max(axis=2)
+    minc = channels.min(axis=2)
+    saturation = maxc - minc
+    gray = (0.30 * red + 0.59 * green + 0.11 * blue).astype(float)
+    gradient = np.hypot(ndimage.sobel(gray, axis=0), ndimage.sobel(gray, axis=1))
+    darkness = 255.0 - gray
+    blue_excess = blue - green
+
+    evidence = (darkness > 130) & (saturation > 50) & (blue_excess > 40) & (gradient > 25) & roi
+    strong = (darkness > 150) & (saturation > 65) & (blue_excess > 55) & (gradient > 25) & roi
+    dark_core = (((maxc < 95) & (saturation > 18)) | ((darkness > 175) & (saturation > 40) & (blue_excess > 10))) & roi
+    return gradient, darkness, evidence, strong, dark_core
+
+
+def remove_smooth_empty_well_artifacts(mask: np.ndarray, roi: np.ndarray, rgb: np.ndarray) -> np.ndarray:
+    labels, count = ndimage.label(mask)
+    if count == 0:
+        return mask
+
+    gradient, darkness, evidence, strong, dark_core = colony_texture_features(rgb, roi)
+    height, width = mask.shape
+    yy, xx = np.ogrid[:height, :width]
+    center_x = (width - 1) / 2.0
+    center_y = (height - 1) / 2.0
+    roi_area = float(max(int(roi.sum()), 1))
+    radius = float(np.sqrt(roi_area / np.pi))
+    normalized_radius = np.sqrt((xx - center_x) ** 2 + (yy - center_y) ** 2) / radius
+    outer_annulus = roi & (normalized_radius > 0.78)
+    center_region = roi & (normalized_radius < 0.62)
+    center_coverage = float((mask & center_region).sum()) / float(max(int(center_region.sum()), 1))
+
+    cleaned = mask.copy()
+    for label in range(1, count + 1):
+        component = labels == label
+        area = int(component.sum())
+        if area == 0:
+            continue
+
+        area_fraction = area / roi_area
+        if area_fraction < 0.003:
+            continue
+
+        component_gradient_p90 = float(np.percentile(gradient[component], 90))
+        component_evidence = float(evidence[component].mean())
+        component_strong = float(strong[component].mean())
+        component_dark_core = float(dark_core[component].mean())
+        component_darkness_p90 = float(np.percentile(darkness[component], 90))
+        outer_fraction = float((component & outer_annulus).sum()) / float(area)
+        center_fraction = float((component & center_region).sum()) / float(area)
+        ys, xs = np.nonzero(component)
+        box_area = float((ys.max() - ys.min() + 1) * (xs.max() - xs.min() + 1))
+        fill = area / box_area
+
+        protected_colony = (
+            (component_strong > 0.25 and component_darkness_p90 > 165)
+            or (component_darkness_p90 > 190 and area_fraction < 0.04)
+            or (component_dark_core > 0.18 and component_darkness_p90 > 160)
+        )
+        smooth_wash = area_fraction > 0.006 and component_gradient_p90 < 66 and component_evidence < 0.16
+        rim_only_stain = (
+            center_coverage < 0.12
+            and area_fraction > 0.004
+            and outer_fraction > 0.68
+            and center_fraction < 0.08
+            and (fill < 0.52 or component_gradient_p90 < 145 or component_evidence < 0.24)
+        )
+        broad_crescent = (
+            center_coverage < 0.12
+            and area_fraction > 0.02
+            and component_gradient_p90 < 85
+            and component_evidence < 0.12
+            and component_dark_core < 0.03
+        )
+        if not protected_colony and (smooth_wash or rim_only_stain or broad_crescent):
+            cleaned[component] = False
+
+    remaining_fraction = float(cleaned.sum()) / roi_area
+    evidence_fraction = float(evidence.sum()) / roi_area
+    strong_fraction = float(strong.sum()) / roi_area
+    dark_core_fraction = float(dark_core.sum()) / roi_area
+    if remaining_fraction > 0.02 and evidence_fraction < 0.005 and dark_core_fraction < 0.003:
+        cleaned[:] = False
+    elif remaining_fraction < 0.025 and dark_core_fraction < 0.0008 and strong_fraction < 0.004 and evidence_fraction < 0.08:
+        cleaned[:] = False
+
+    return cleaned
 
 
 def remove_outer_rim_fragments(mask: np.ndarray, roi: np.ndarray) -> np.ndarray:
