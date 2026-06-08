@@ -10,7 +10,8 @@ from PIL import Image, ImageDraw
 from scipy import ndimage, signal
 
 
-COLONY_ROI_SCALE = 0.985
+COLONY_ROI_SCALE = 0.995
+COLONY_WEAK_EXPANSION_PIXELS = 3
 
 
 def kmeans_1d(values: np.ndarray, k: int, iterations: int = 100) -> np.ndarray:
@@ -28,6 +29,19 @@ def kmeans_1d(values: np.ndarray, k: int, iterations: int = 100) -> np.ndarray:
     return centers
 
 
+def otsu_threshold(values: np.ndarray, bins: int = 256) -> float:
+    hist, edges = np.histogram(values, bins=bins)
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    below_weight = np.cumsum(hist).astype(float)
+    above_weight = np.cumsum(hist[::-1])[::-1].astype(float)
+    below_mean = np.cumsum(hist * centers) / (below_weight + 1e-9)
+    above_mean = (np.cumsum((hist * centers)[::-1]) / (above_weight[::-1] + 1e-9))[::-1]
+    variance = below_weight[:-1] * above_weight[1:] * (below_mean[:-1] - above_mean[1:]) ** 2
+    if variance.size == 0:
+        return float(np.median(values))
+    return float(centers[:-1][int(variance.argmax())])
+
+
 def initial_stain_mask(rgb: np.ndarray) -> np.ndarray:
     channels = rgb.astype(np.int16)
     red = channels[:, :, 0]
@@ -41,7 +55,7 @@ def initial_stain_mask(rgb: np.ndarray) -> np.ndarray:
     purple_colony = (blue > green + 14) & (red > green + 10)
     mask = (blue_colony | purple_colony) & (saturation > 50) & (green < 145) & (maxc < 190) & (maxc > 45)
 
-    height, width = mask.shape
+    height, width = green.shape
     mask[: int(height * 0.45), :] = False
     mask[:, :50] = False
     mask[:, width - 50 :] = False
@@ -75,7 +89,8 @@ def plate_edge_data(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray
     gy = np.abs(ndimage.sobel(gray, axis=0))
     gx = np.abs(ndimage.sobel(gray, axis=1))
 
-    # Plastic plate edges are bright, low-saturation horizontal lines.
+    # Use transparent plastic plate edges: low saturation, reasonably bright,
+    # and stronger vertical gradient than horizontal gradient.
     candidates = gy * (gy > gx * 0.75) * (saturation < 45) * (maxc > 110) * (minc > 65)
     nonzero = candidates[candidates > 0]
     if nonzero.size < 500:
@@ -89,10 +104,7 @@ def plate_edge_data(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray
     return xx + left, yy + top, weights, rgb.shape[1], rgb.shape[0]
 
 
-def plate_edge_alignment_score(
-    edge_data: tuple[np.ndarray, np.ndarray, np.ndarray, int, int],
-    angle_degrees: float,
-) -> float:
+def plate_edge_alignment_score(edge_data: tuple[np.ndarray, np.ndarray, np.ndarray, int, int], angle_degrees: float) -> float:
     x, y, weights, width, height = edge_data
     center_x = width / 2.0
     center_y = height / 2.0
@@ -287,10 +299,7 @@ def select_rim_grid(response: np.ndarray) -> tuple[list[float], list[float], flo
 
             x_spacing = np.diff(x_centers)
             y_spacing = y_centers[1] - y_centers[0]
-            geometry_penalty = (
-                abs(x_spacing[0] - x_spacing[1]) * 0.01
-                + abs(float(np.mean(x_spacing)) - y_spacing) * 0.005
-            )
+            geometry_penalty = abs(x_spacing[0] - x_spacing[1]) * 0.01 + abs(float(np.mean(x_spacing)) - y_spacing) * 0.005
             score = sum(cell_scores) + 0.5 * min(cell_scores) - geometry_penalty
             if best is None or score > best[0]:
                 best = (score, x_centers, y_centers, cell_scores)
@@ -348,19 +357,40 @@ def colony_mask(rgb: np.ndarray, ellipse_scale: float = COLONY_ROI_SCALE) -> tup
     minc = channels.min(axis=2)
     saturation = maxc - minc
 
-    blue_colony = (blue > green + 12) & (blue >= red - 8)
-    purple_colony = (blue > green + 12) & (red > green + 8)
-    chromatic = (blue_colony | purple_colony) & (saturation > 45) & (green < 155) & (maxc < 190)
-    deep_blue = (maxc < 80) & (saturation > 18) & (blue >= green + 4)
-    mask = chromatic | deep_blue
-
-    height, width = mask.shape
+    height, width = green.shape
     yy, xx = np.ogrid[:height, :width]
     cx = (width - 1) / 2.0
     cy = (height - 1) / 2.0
     radius = min(width, height) * ellipse_scale / 2.0
     well_roi = ((xx - cx) / radius) ** 2 + ((yy - cy) / radius) ** 2 <= 1.0
-    cleaned = filter_components(mask & well_roi, min_area=3, max_area=mask.size, remove_skinny=False)
+
+    blue_excess = blue - green
+    red_excess = red - green
+    darkness = 255.0 - (0.30 * red + 0.59 * green + 0.11 * blue)
+    stain_density = blue_excess + 0.35 * np.maximum(red_excess, 0) + 0.45 * darkness
+    roi_density = stain_density[well_roi]
+    strong_threshold = max(otsu_threshold(roi_density), float(np.percentile(roi_density, 48)), 65.0)
+    weak_threshold = max(strong_threshold * 0.72, 45.0)
+
+    chromatic = (
+        (blue_excess > 8)
+        & ((blue >= red - 16) | (red_excess > 5))
+        & (saturation > 22)
+        & (green < 182)
+        & (maxc < 225)
+    )
+    strong = ((stain_density > strong_threshold) & chromatic) | ((maxc < 90) & (saturation > 14) & (blue >= green - 5))
+    weak = ((stain_density > weak_threshold) & chromatic) | ((maxc < 105) & (saturation > 12) & (blue >= green - 8))
+    strong &= well_roi
+    weak &= well_roi
+    expansion = ndimage.binary_dilation(
+        strong,
+        structure=np.ones((3, 3)),
+        iterations=COLONY_WEAK_EXPANSION_PIXELS,
+    )
+    mask = strong | (weak & expansion)
+    mask = ndimage.binary_closing(mask, structure=np.ones((2, 2)))
+    cleaned = filter_components(mask, min_area=3, max_area=mask.size, remove_skinny=False)
     cleaned = remove_outer_rim_fragments(cleaned, well_roi)
     return cleaned, well_roi
 
@@ -401,18 +431,30 @@ def remove_outer_rim_fragments(mask: np.ndarray, roi: np.ndarray) -> np.ndarray:
         outer_75_fraction = float((normalized_radius > 0.75).mean())
         outer_85_fraction = float((normalized_radius > 0.85).mean())
         area_fraction = float(areas[label]) / float(mask.size)
+        radial_std = float(normalized_radius.std())
+        angles = np.sort(np.arctan2(global_y - center_y, global_x - center_x))
+        gaps = np.diff(np.concatenate([angles, [angles[0] + 2 * np.pi]]))
+        angular_span = float(2 * np.pi - gaps.max())
         well_size = min(mask.shape)
-        very_skinny = edge_fraction > 0.65 and longest > well_size * 0.45 and aspect < 0.18 and fill < 0.16
-        smeared_rim = edge_fraction > 0.65 and longest > well_size * 0.60 and aspect < 0.30 and fill < 0.14
-        huge_edge_smear = areas[label] > mask.size * 0.04 and fill < 0.12 and edge_fraction > 0.80
+        very_skinny = edge_fraction > 0.70 and longest > well_size * 0.45 and aspect < 0.16 and fill < 0.18
+        smooth_rim_band = (
+            area_fraction > 0.003
+            and outer_85_fraction > 0.80
+            and radial_std < 0.045
+            and angular_span > 0.65
+            and (fill < 0.24 or aspect < 0.22 or edge_fraction > 0.30)
+        )
+        huge_edge_smear = areas[label] > mask.size * 0.04 and fill < 0.12 and edge_fraction > 0.80 and radial_std < 0.06
         crescent_rim_stain = (
             area_fraction > 0.005
-            and outer_75_fraction > 0.70
-            and outer_85_fraction > 0.30
+            and outer_75_fraction > 0.85
+            and outer_85_fraction > 0.70
+            and radial_std < 0.055
+            and angular_span > 0.65
             and longest > well_size * 0.18
-            and fill < 0.30
+            and fill < 0.28
         )
-        if very_skinny or smeared_rim or huge_edge_smear or crescent_rim_stain:
+        if very_skinny or smooth_rim_band or huge_edge_smear or crescent_rim_stain:
             cleaned[labels == label] = False
 
     return cleaned
@@ -470,9 +512,7 @@ def analyze_image(input_path: Path, output_dir: Path, save_artifacts: bool = Tru
         lower_plate_crop.save(output_dir / f"{base}_auto_lower_plate_crop_preview.png")
 
         grid_qc = draw_grid_qc(image, x_centers, y_centers, diameter)
-        crop_with_padding(grid_qc, crop_left, crop_top, crop_right, crop_bottom).save(
-            output_dir / f"{base}_auto_grid_qc.png"
-        )
+        crop_with_padding(grid_qc, crop_left, crop_top, crop_right, crop_bottom).save(output_dir / f"{base}_auto_grid_qc.png")
 
         mask_preview = Image.fromarray(np.where(discovery_mask, 0, 255).astype(np.uint8), mode="L").convert("RGB")
         crop_with_padding(mask_preview, crop_left, crop_top, crop_right, crop_bottom).save(

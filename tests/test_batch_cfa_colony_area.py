@@ -40,18 +40,7 @@ class BatchHelperTests(unittest.TestCase):
             output_png = output_dir / "generated_mask.png"
             legacy_output_tif = legacy_output_dir / "generated_crop.tif"
 
-            files = [
-                wanted_tif,
-                wanted_tiff,
-                wanted_png,
-                wanted_jpg,
-                wanted_jpeg,
-                ignored_gif,
-                output_tif,
-                output_png,
-                legacy_output_tif,
-            ]
-            for path in files:
+            for path in [wanted_tif, wanted_tiff, wanted_png, wanted_jpg, wanted_jpeg, ignored_gif, output_tif, output_png, legacy_output_tif]:
                 path.write_bytes(b"not a real image")
 
             images = find_input_images(root, excluded_dirs=[output_dir])
@@ -87,8 +76,7 @@ class BatchHelperTests(unittest.TestCase):
         root = Path("/tmp/input")
 
         self.assertEqual(sample_label(root, root / "condition_a" / "plate_1.tif"), "condition_a")
-        nested_image = root / "experiment_1" / "condition_a" / "plate_1.tif"
-        self.assertEqual(sample_label(root, nested_image), "experiment_1/condition_a")
+        self.assertEqual(sample_label(root, root / "experiment_1" / "condition_a" / "plate_1.tif"), "experiment_1/condition_a")
         self.assertEqual(sample_label(root, root / "plate_1.tif"), "input")
 
     def test_internal_control_report_is_written_without_artifacts(self) -> None:
@@ -195,6 +183,23 @@ class BatchHelperTests(unittest.TestCase):
         mask, _ = colony_mask(rgb)
 
         self.assertLess(int((mask & rim_stain).sum()), int(rim_stain.sum() * 0.20))
+
+    def test_colony_mask_does_not_flood_pale_purple_wash(self) -> None:
+        rgb = np.full((200, 200, 3), 220, dtype=np.uint8)
+        yy, xx = np.ogrid[:200, :200]
+        well = ((xx - 99.5) / 98.0) ** 2 + ((yy - 99.5) / 98.0) ** 2 <= 1.0
+        wash = well & (yy < 135)
+        rgb[wash] = np.array([150, 145, 185], dtype=np.uint8)
+
+        colonies = np.zeros((200, 200), dtype=bool)
+        for cx, cy, radius in [(70, 70, 10), (125, 80, 12), (95, 118, 9), (145, 122, 7)]:
+            colonies |= (xx - cx) ** 2 + (yy - cy) ** 2 <= radius**2
+        rgb[colonies] = np.array([45, 35, 140], dtype=np.uint8)
+
+        mask, _ = colony_mask(rgb)
+
+        self.assertGreater(int((mask & colonies).sum()), int(colonies.sum() * 0.90))
+        self.assertLess(int((mask & wash & ~colonies).sum()), int((wash & ~colonies).sum() * 0.10))
 
 
 if __name__ == "__main__":

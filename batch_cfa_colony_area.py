@@ -18,31 +18,6 @@ from analyze_cfa_plate_one import analyze_image
 
 IMAGE_SUFFIXES = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 DEFAULT_OUTPUT_DIR_NAME = "_colonyarea_results"
-SUPPORTED_IMAGE_TEXT = ".tif, .tiff, .png, .jpg, or .jpeg"
-
-SAMPLE_SUMMARY_COLUMNS = [
-    "sample",
-    "image_count",
-    "well_count",
-    "mean_area_percent",
-    "sd_area_percent",
-    "min_area_percent",
-    "max_area_percent",
-]
-QC_FLAG_COLUMNS = ["level", "sample", "image", "well", "metric", "value", "reason"]
-SAMPLE_QC_INDEX_COLUMNS = ["sample", "image_count", "well_count", "mean_area_percent", "qc_flags"]
-IMAGE_REPORT_COLUMNS = [
-    "sample",
-    "image",
-    "mean_area_percent",
-    "sd_area_percent",
-    "min_area_percent",
-    "max_area_percent",
-    "well_cv",
-    "deskew_angle_degrees",
-    "grid_source",
-    "grid_score",
-]
 
 
 def path_is_under(path: Path, parent: Path) -> bool:
@@ -123,12 +98,7 @@ def summarize_values(values: list[float]) -> tuple[float, float, float, float]:
     return float(arr.mean()), float(arr.std(ddof=1)) if arr.size > 1 else 0.0, float(arr.min()), float(arr.max())
 
 
-def make_contact_sheet(
-    entries: list[tuple[str, Path]],
-    output_path: Path,
-    columns: int = 4,
-    thumb_width: int = 430,
-) -> None:
+def make_contact_sheet(entries: list[tuple[str, Path]], output_path: Path, columns: int = 4, thumb_width: int = 430) -> None:
     thumbs: list[Image.Image] = []
     for label, image_path in entries:
         with Image.open(image_path) as opened_image:
@@ -261,7 +231,7 @@ def write_sample_mask_qc(
   <h1>{html.escape(sample)}</h1>
   <section>
     <h2>Sample Summary</h2>
-    {html_table([sample_summary_row], SAMPLE_SUMMARY_COLUMNS) if sample_summary_row else "<p>No summary row.</p>"}
+    {html_table([sample_summary_row], ["sample", "image_count", "well_count", "mean_area_percent", "sd_area_percent", "min_area_percent", "max_area_percent"]) if sample_summary_row else "<p>No summary row.</p>"}
   </section>
   <section>
     <h2>Mask Contact Sheet</h2>
@@ -317,7 +287,7 @@ def write_sample_mask_qc(
 <body>
   <h1>Sample Mask QC Index</h1>
   <p>Open each sample page to inspect mask, overlay, and grid contact sheets for that sample.</p>
-  {html_table(index_rows, SAMPLE_QC_INDEX_COLUMNS, escape_values=False)}
+  {html_table(index_rows, ["sample", "image_count", "well_count", "mean_area_percent", "qc_flags"], escape_values=False)}
 </body>
 </html>
 """
@@ -348,13 +318,8 @@ def write_internal_control_report(
         </section>
         <section>
           <h2>Visual QC: Colony Mask Overlay</h2>
-          <p>
-            Red pixels are colonies counted for area measurement.
-            Use this sheet to catch over- or under-detection by well.
-          </p>
-          <a href="overlay_contact_sheet.png">
-            <img src="overlay_contact_sheet.png" alt="Colony mask overlay contact sheet">
-          </a>
+          <p>Red pixels are the colonies counted for area measurement. Use this sheet to catch over- or under-detection by well.</p>
+          <a href="overlay_contact_sheet.png"><img src="overlay_contact_sheet.png" alt="Colony mask overlay contact sheet"></a>
         </section>
         <section>
           <h2>Visual QC: Binary Masks</h2>
@@ -417,17 +382,17 @@ def write_internal_control_report(
 
   <section>
     <h2>Sample Summary</h2>
-    {html_table(sample_rows, SAMPLE_SUMMARY_COLUMNS)}
+    {html_table(sample_rows, ["sample", "image_count", "well_count", "mean_area_percent", "sd_area_percent", "min_area_percent", "max_area_percent"])}
   </section>
 
   <section>
     <h2>QC Flags</h2>
-    {html_table(qc_rows, QC_FLAG_COLUMNS)}
+    {html_table(qc_rows, ["level", "sample", "image", "well", "metric", "value", "reason"])}
   </section>
 
   <section>
     <h2>Image Summary</h2>
-    {html_table(image_rows, IMAGE_REPORT_COLUMNS)}
+    {html_table(image_rows, ["sample", "image", "mean_area_percent", "sd_area_percent", "min_area_percent", "max_area_percent", "well_cv", "deskew_angle_degrees", "grid_source", "grid_score"])}
   </section>
 </body>
 </html>
@@ -435,12 +400,7 @@ def write_internal_control_report(
     report_path.write_text(report, encoding="utf-8")
 
 
-def run_batch(
-    root: Path,
-    output_dir: Path | None = None,
-    save_artifacts: bool = True,
-    deduplicate: bool = True,
-) -> dict:
+def run_batch(root: Path, output_dir: Path | None = None, save_artifacts: bool = True, deduplicate: bool = True) -> dict:
     root = root.expanduser().resolve()
     output_dir = (output_dir.expanduser().resolve() if output_dir else root / DEFAULT_OUTPUT_DIR_NAME)
     artifact_dir = output_dir / "per_image"
@@ -450,7 +410,7 @@ def run_batch(
 
     discovered_images = find_input_images(root, excluded_dirs=[output_dir])
     if not discovered_images:
-        raise FileNotFoundError(f"No supported image files found under {root}. Expected {SUPPORTED_IMAGE_TEXT}.")
+        raise FileNotFoundError(f"No supported image files found under {root}. Expected .tif, .tiff, .png, .jpg, or .jpeg.")
 
     duplicate_rows: list[dict] = []
     if deduplicate:
@@ -475,15 +435,8 @@ def run_batch(
 
         try:
             result = analyze_image(image_path, image_output_dir, save_artifacts=save_artifacts)
-        except Exception as exc:  # noqa: BLE001 - keep processing the rest of the batch.
-            failed_rows.append(
-                {
-                    "sample": sample,
-                    "image": image_path.name,
-                    "image_path": str(image_path),
-                    "error": str(exc),
-                }
-            )
+        except Exception as exc:  # noqa: BLE001 - batch report should preserve all failures.
+            failed_rows.append({"sample": sample, "image": image_path.name, "image_path": str(image_path), "error": str(exc)})
             continue
 
         areas = [well["colony_area_percent"] for well in result["wells"]]
@@ -533,12 +486,7 @@ def run_batch(
 
         if save_artifacts:
             base = image_path.stem
-            deskew_contact_entries.append(
-                (
-                    f"{label} angle {result['deskew_angle_degrees']:.2f}",
-                    image_output_dir / f"{base}_deskewed_preview.png",
-                )
-            )
+            deskew_contact_entries.append((f"{label} angle {result['deskew_angle_degrees']:.2f}", image_output_dir / f"{base}_deskewed_preview.png"))
             grid_contact_entries.append((label, image_output_dir / f"{base}_auto_grid_qc.png"))
             overlay_contact_entries.append((label, image_output_dir / f"{base}_auto_overlay_montage.png"))
             mask_contact_entries.append((label, image_output_dir / f"{base}_auto_mask_montage.png"))
@@ -626,32 +574,20 @@ def run_batch(
     write_csv(
         output_dir / "colony_area_sample_summary.csv",
         sample_rows,
-        SAMPLE_SUMMARY_COLUMNS,
+        ["sample", "image_count", "well_count", "mean_area_percent", "sd_area_percent", "min_area_percent", "max_area_percent"],
     )
 
     qc_rows = build_qc_flags(image_rows, well_rows)
-    write_csv(output_dir / "qc_flags.csv", qc_rows, QC_FLAG_COLUMNS)
+    write_csv(output_dir / "qc_flags.csv", qc_rows, ["level", "sample", "image", "well", "metric", "value", "reason"])
 
     if save_artifacts:
         make_contact_sheet(deskew_contact_entries, output_dir / "deskew_contact_sheet.png", columns=4, thumb_width=430)
         make_contact_sheet(grid_contact_entries, output_dir / "grid_qc_contact_sheet.png", columns=4, thumb_width=430)
-        make_contact_sheet(
-            overlay_contact_entries,
-            output_dir / "overlay_contact_sheet.png",
-            columns=4,
-            thumb_width=430,
-        )
+        make_contact_sheet(overlay_contact_entries, output_dir / "overlay_contact_sheet.png", columns=4, thumb_width=430)
         make_contact_sheet(mask_contact_entries, output_dir / "mask_contact_sheet.png", columns=4, thumb_width=430)
         write_sample_mask_qc(output_dir, artifact_rows, sample_rows, qc_rows)
 
-    write_internal_control_report(
-        output_dir,
-        image_rows,
-        sample_rows,
-        qc_rows,
-        failed_rows,
-        visual_artifacts=save_artifacts,
-    )
+    write_internal_control_report(output_dir, image_rows, sample_rows, qc_rows, failed_rows, visual_artifacts=save_artifacts)
 
     print(f"Discovered {len(discovered_images)} supported image files.")
     if deduplicate:
@@ -755,35 +691,15 @@ def build_qc_flags(image_rows: list[dict], well_rows: list[dict]) -> list[dict]:
         if abs(diameter - median_diameter) / median_diameter > 0.08:
             add_image_flag("diameter", f"{diameter:.4f}", f"Diameter differs from median {median_diameter:.2f} by >8%.")
         if abs(y_spacing - median_y_spacing) / median_y_spacing > 0.08:
-            add_image_flag(
-                "y_spacing",
-                f"{y_spacing:.4f}",
-                f"Y spacing differs from median {median_y_spacing:.2f} by >8%.",
-            )
+            add_image_flag("y_spacing", f"{y_spacing:.4f}", f"Y spacing differs from median {median_y_spacing:.2f} by >8%.")
         if abs(x_spacing_1 - x_spacing_2) / max(x_spacing_1, x_spacing_2) > 0.12:
-            add_image_flag(
-                "x_spacing_balance",
-                f"{x_spacing_1:.2f}/{x_spacing_2:.2f}",
-                "Left and right x spacings differ by >12%.",
-            )
+            add_image_flag("x_spacing_balance", f"{x_spacing_1:.2f}/{x_spacing_2:.2f}", "Left and right x spacings differ by >12%.")
         if discovery_pixels < 20000 and grid_source != "rim":
-            add_image_flag(
-                "discovery_pixels",
-                str(discovery_pixels),
-                "Low stain-pixel count; grid detection may be unstable.",
-            )
+            add_image_flag("discovery_pixels", str(discovery_pixels), "Low stain-pixel count; grid detection may be unstable.")
         if abs(deskew_angle) > 3.0:
-            add_image_flag(
-                "deskew_angle_degrees",
-                f"{deskew_angle:.4f}",
-                "Large plate-edge deskew angle; inspect straightened image.",
-            )
+            add_image_flag("deskew_angle_degrees", f"{deskew_angle:.4f}", "Large plate-edge deskew angle; inspect straightened image.")
         if grid_source != "rim":
-            add_image_flag(
-                "grid_source",
-                grid_source,
-                "Rim-based grid was not confident; stain-based fallback was used.",
-            )
+            add_image_flag("grid_source", grid_source, "Rim-based grid was not confident; stain-based fallback was used.")
         elif grid_score < 14.0:
             add_image_flag("grid_score", f"{grid_score:.4f}", "Lower rim-grid confidence; inspect circle placement.")
         if well_cv > 0.35 and mean_area > 1:

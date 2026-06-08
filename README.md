@@ -152,7 +152,7 @@ Check:
 
 ## Repository Hygiene
 
-Raw TIFF/JPEG/PNG/PDF/XLSX/ZIP files and generated output folders should not be committed to the code repository. Keep large raw image data outside Git, or use Git LFS if raw data must be versioned.
+Raw TIFF/JPEG/PNG/PDF/XLSX/ZIP files and generated output folders are ignored by `.gitignore`. Keep large raw image data outside the code repository or use Git LFS if raw data must be versioned.
 
 ## Development Checks
 

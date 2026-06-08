@@ -1,9 +1,19 @@
-# Python/local development
+# macOS and editor files
 .DS_Store
+._*
+*.swp
+*.swo
+
+# Python cache and environments
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
+env/
+.python-version
+
+# Build and packaging outputs
 build/
 dist/
 *.egg-info/
@@ -27,17 +37,23 @@ duplicate_images.csv
 *_auto_*
 *_deskewed_preview.png
 results_*_auto_colony_area.txt
+.codex_spreadsheet_build/
 
-# Raw images and local analysis artifacts
+# Raw image/data artifacts should not be committed to the code repository.
 *.tif
 *.tiff
 *.jpg
 *.jpeg
+*.png
 *.pdf
 *.xlsx
 *.zip
 
-# Keep small tutorial figures.
+# Keep small documentation figures in the repository.
 !docs/
 !docs/assets/
 !docs/assets/*.png
+
+# Local prototype scripts kept out of the publishable package.
+improve_colony_detection_one.py
+*.ijm
