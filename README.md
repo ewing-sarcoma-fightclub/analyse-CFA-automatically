@@ -176,4 +176,4 @@ python -m py_compile analyze_cfa_plate_one.py batch_cfa_colony_area.py calculate
 
 ## License
 
-No open-source license has been selected yet. Add a `LICENSE` file before public release if you want to define reuse terms.
+MIT License. See [LICENSE](LICENSE).
