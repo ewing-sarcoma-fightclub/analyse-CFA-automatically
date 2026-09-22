@@ -2,13 +2,15 @@
 
 Automated colony formation assay (CFA) quantification for TIFF, PNG, or JPEG images of stained 6-well plates.
 
+Built to turn stained plate photographs into auditable measurements, combining Python image processing, batch automation and visual quality control. The reported measurement is the fraction of each well covered by colony stain; it is not an individual-colony count.
+
 The pipeline detects the lower stained plate area, straightens the image from plate edges, finds the six wells, segments stained colony area in each well, and writes CSV measurements plus visual internal-control outputs.
 
 For a step-by-step walkthrough, see [TUTORIAL.md](TUTORIAL.md).
 
 ## Author
 
-- [itismeangie](https://github.com/itismeangie)
+- [Angelina Yershova](https://github.com/itismeangie) · [LinkedIn](https://www.linkedin.com/in/angelina-yershova/)
 
 ## What the Pipeline Produces
 
@@ -49,9 +51,11 @@ The tool generates high-resolution per-image QC panels and an all-image HTML rep
 
 ## Installation
 
-Clone the repository, then install dependencies:
+Use **Python 3.10 or newer**. Clone the repository, then install dependencies:
 
 ```bash
+git clone https://github.com/ewing-sarcoma-fightclub/analyse-CFA-automatically.git
+cd analyse-CFA-automatically
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -173,6 +177,12 @@ python -m py_compile analyze_cfa_plate_one.py batch_cfa_colony_area.py calculate
 - The pipeline is tuned for stained 6-well plate images where the lower half contains the target six wells.
 - Strong glare, very faint rims, nonstandard plate geometry, or extreme cropping may require manual review.
 - The segmentation thresholds are tuned for blue/purple colony stain and should be revalidated for different stains or imaging conditions.
+- Unit tests cover selected segmentation edge cases and batch/reporting behavior. They do not establish accuracy against manually annotated experimental ground truth.
+
+## Related Work
+
+- [Single-cell RNA-seq QC, annotation and integration](https://github.com/ewing-sarcoma-fightclub/scRNAseq_qc_annotation)
+- [SF3B4 and chromosome 1q gain analysis](https://github.com/itismeangie/SF3B4-as-1q-gain-driver)
 
 ## License
 
