@@ -1,10 +1,8 @@
 # CFA Colony Area Quantification
 
-Automated colony formation assay (CFA) quantification for TIFF, PNG, or JPEG images of stained 6-well plates.
+Python image analysis for colony formation assays (CFA). Processes TIFF, PNG and JPEG images of stained 6-well plates and reports the percentage of each well covered by colony stain.
 
-Built to turn stained plate photographs into auditable measurements, combining Python image processing, batch automation and visual quality control. The reported measurement is the fraction of each well covered by colony stain; it is not an individual-colony count.
-
-The pipeline detects the lower stained plate area, straightens the image from plate edges, finds the six wells, segments stained colony area in each well, and writes CSV measurements plus visual internal-control outputs.
+The pipeline crops to the lower stained plate area, straightens the image, locates the six wells and segments the stained area. Each run produces CSV measurements, masks and overlays for visual QC.
 
 For a step-by-step walkthrough, see [TUTORIAL.md](TUTORIAL.md).
 
@@ -12,7 +10,7 @@ For a step-by-step walkthrough, see [TUTORIAL.md](TUTORIAL.md).
 
 - [Angelina Yershova](https://github.com/itismeangie) · [LinkedIn](https://www.linkedin.com/in/angelina-yershova/)
 
-## What the Pipeline Produces
+## Output Files
 
 For each run, the output directory contains:
 
@@ -30,12 +28,11 @@ For each run, the output directory contains:
 - `deskew_contact_sheet.png`: deskewed image previews.
 - `per_image/`: detailed per-image crops, masks, overlays, and text outputs.
 
-The visual QC report is intended as an internal control so users can quickly verify that the well detection and masks match the stained colonies.
-For sample-by-sample mask review, open `sample_mask_qc/index.html` and choose the sample you want to audit.
+Open `internal_control_qc.html` to check well detection and colony masks against the original images. For individual samples, use `sample_mask_qc/index.html`.
 
 ## Example Visual QC Outputs
 
-The tool generates high-resolution per-image QC panels and an all-image HTML report so users can inspect whether well detection and colony masks match the stained wells.
+Example panels from the HTML QC report:
 
 **Plate/well detection:** red circles should sit on the well rims.
 
@@ -154,13 +151,13 @@ Check:
 - `sample_mask_qc/index.html` for per-sample mask and overlay contact sheets.
 - `qc_flags.csv` for low grid confidence, fallback grid detection, or near-saturated wells.
 
-## Repository Hygiene
+## Data Files
 
 Raw TIFF/JPEG/PNG/PDF/XLSX/ZIP files and generated output folders are ignored by `.gitignore`. Keep large raw image data outside the code repository or use Git LFS if raw data must be versioned.
 
-## Development Checks
+## Tests
 
-Run the lightweight test suite:
+Tests cover segmentation edge cases, duplicate-image handling, output-folder exclusion and QC-report generation:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -172,12 +169,11 @@ Check that the scripts compile:
 python -m py_compile analyze_cfa_plate_one.py batch_cfa_colony_area.py calculate_colony_area.py
 ```
 
-## Limitations
+## Image Requirements
 
-- The pipeline is tuned for stained 6-well plate images where the lower half contains the target six wells.
-- Strong glare, very faint rims, nonstandard plate geometry, or extreme cropping may require manual review.
-- The segmentation thresholds are tuned for blue/purple colony stain and should be revalidated for different stains or imaging conditions.
-- Unit tests cover selected segmentation edge cases and batch/reporting behavior. They do not establish accuracy against manually annotated experimental ground truth.
+- Use blue/purple stained 6-well plate images with the target plate in the lower half of the image.
+- Keep all six well rims visible and avoid glare or tight cropping.
+- For other stains or imaging conditions, adjust the segmentation thresholds and check the resulting masks against the images.
 
 ## Related Work
 

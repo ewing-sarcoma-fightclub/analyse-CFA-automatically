@@ -1,12 +1,12 @@
 # Tutorial: Quantify Colony Area From Plate Images
 
 This tutorial shows how to run the CFA colony-area tool on a folder of stained
-6-well plate images and how to audit the output masks.
+6-well plate images and how to check the output masks.
 
 ## Visual Overview
 
-The tool is designed to produce measurements and human-auditable QC images in
-the same run.
+Each run produces measurement tables, well-detection images, colony overlays
+and binary masks.
 
 | Well detection | Colony overlay | Binary mask |
 |---|---|---|
@@ -110,7 +110,7 @@ failed_images.csv                  images that failed processing
 sample_mask_qc/index.html          per-sample QC navigator
 ```
 
-## 5. Audit The Masks
+## 5. Check The Masks
 
 Inspect these visual outputs before using the measurements:
 
@@ -155,18 +155,16 @@ Use `colony_area_well_results.csv` for well-level statistics and
 manually review samples flagged in `qc_flags.csv` if the mask or well detection
 does not match the visible colonies.
 
-## 7. Run Development Checks
+## 7. Run Tests
 
 ```bash
 python -m py_compile analyze_cfa_plate_one.py batch_cfa_colony_area.py calculate_colony_area.py
 python -m unittest discover -s tests -v
 ```
 
-## Notes And Limitations
+## Image Requirements
 
-- The method is tuned for blue/purple stained colony-formation assays in
-  6-well plates.
-- Very strong glare, poor focus, nonstandard cropping, or unusual stain color
-  can require manual QC or threshold adjustment.
-- The visual QC reports are part of the intended workflow; do not rely only on
-  CSV numbers.
+- Use blue/purple stained 6-well plates with all six wells in focus.
+- Avoid glare and cropping that cuts off well rims.
+- For other stains or imaging conditions, adjust the thresholds and compare
+  the masks with the original images.
